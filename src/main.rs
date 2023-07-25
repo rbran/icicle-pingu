@@ -1,29 +1,59 @@
-mod aarch64;
-mod arm;
-mod helper;
+use std::path::Path;
+
+use anyhow::Result;
+
+use strlen::StrlenTests;
+
 mod strlen;
+
+mod helper;
+
+mod vm;
+
+mod aarch64;
+//mod arm;
 mod x86;
 mod x86_64;
 
-fn main() {
-    let src = "tests";
+fn main() -> Result<()> {
     let tests = strlen::all_tests();
-    if !x86::test_i386(&src, &tests) {
-        eprintln!("Fail i386");
-    }
-    if !x86::test_i586(&src, &tests) {
-        eprintln!("Fail i586");
-    }
-    if !x86_64::test(&src, &tests) {
-        eprintln!("Fail x86_64");
-    }
-    if !arm::test_arm(&src, &tests) {
-        eprintln!("Fail arm");
-    }
-    if !arm::test_thumb(&src, &tests) {
-        eprintln!("Fail thumb");
-    }
-    if !aarch64::test(&src, &tests) {
-        eprintln!("Fail aarch64");
-    }
+    //NOTE there is no i486 triple, just use the i586 instead
+    let mut i586_vm = x86::X86::new(
+        "i586-linux-musl",
+        Path::new("/home/rbran/src/icicle-pingu/bins/i486-linux-musl-libc.so"),
+    )?;
+    tests.clone().test_all(&mut i586_vm)?;
+
+    let mut i686_vm = x86::X86::new(
+        "i686-linux-musl",
+        Path::new("/home/rbran/src/icicle-pingu/bins/i686-linux-musl-libc.so"),
+    )?;
+    tests.clone().test_all(&mut i686_vm)?;
+
+    let mut x86_64_vm = x86_64::X86_64::new(Path::new(
+        "/home/rbran/src/icicle-pingu/bins/x86_64-linux-musl-libc.so",
+    ))?;
+    tests.clone().test_all(&mut x86_64_vm)?;
+
+    //let mut arm_vm = arm::ARM::new(
+    //    "armv7-linux-musl",
+    //    Path::new("/home/rbran/src/icicle-pingu/bins/arm-linux-musl-libc.so"),
+    //)?;
+    //tests.clone().test_all(&mut arm_vm)?;
+
+    let mut aarch64_vm = aarch64::Aarch64::new(
+        "aarch64-linux-musl",
+        Path::new(
+            "/home/rbran/src/icicle-pingu/bins/aarch64-linux-musl-libc.so",
+        ),
+    )?;
+    tests.clone().test_all(&mut aarch64_vm)?;
+
+    //let mut aarch64_be_vm = aarch64::Aarch64::new(
+    //    "aarch64_be-linux-musl",
+    //    Path::new("/home/rbran/src/icicle-pingu/bins/aarch64_be-linux-musl-libc.so"),
+    //)?;
+    //tests.clone().test_all(&mut aarch64_be_vm)?;
+
+    Ok(())
 }

@@ -1,3 +1,4 @@
+use anyhow::Result;
 use icicle_mem::{perm, Mapping};
 
 pub fn create_empty_memory(
@@ -5,7 +6,7 @@ pub fn create_empty_memory(
     addr: Option<u64>,
     len: u64,
     perm: u8,
-) -> Result<u64, Box<dyn std::error::Error>> {
+) -> Result<(u64, u64)> {
     let page_size = mem.page_size();
     let blocks = (len + (page_size - 1)) / page_size;
     let addr = match addr {
@@ -23,18 +24,13 @@ pub fn create_empty_memory(
         page_size,
         mapping,
     )));
-    Ok(addr)
+    Ok((addr, blocks * page_size))
 }
 
-pub fn create_null(
-    mem: &mut icicle_mem::Mmu,
-) -> Result<u64, Box<dyn std::error::Error>> {
-    create_empty_memory(mem, Some(0), 1024, perm::NONE)
-}
+//pub fn create_null(mem: &mut icicle_mem::Mmu) -> Result<u64> {
+//    create_empty_memory(mem, Some(0), 1024, perm::NONE).map(|(addr, _)| addr)
+//}
 
-pub fn create_stack(
-    mem: &mut icicle_mem::Mmu,
-    len: u64,
-) -> Result<u64, Box<dyn std::error::Error>> {
-    create_empty_memory(mem, None, len, perm::READ | perm::WRITE)
-}
+//pub fn create_stack(mem: &mut icicle_mem::Mmu, len: u64) -> Result<u64> {
+//    create_empty_memory(mem, None, len, perm::READ | perm::WRITE).map(|(addr, _)| addr)
+//}

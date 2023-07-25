@@ -1,9 +1,17 @@
+use crate::vm::{Param, Vm};
+use anyhow::Result;
 use icicle_mem::{perm, Mmu};
 
 pub trait StrlenTest {
-    fn write_str(&self, mem: &mut Mmu, addr: u64);
+    fn write_str(&self, mem: &mut Mmu, addr: u64) -> Result<()>;
     fn result(&self) -> u64;
     fn data_len(&self) -> u64;
+    fn test_on_vm(
+        &self,
+        fun_addr: u64,
+        ret_addr: u64,
+        vm: &mut dyn Vm,
+    ) -> Result<bool>;
 }
 
 pub struct StrlenTestStatic {
@@ -12,14 +20,27 @@ pub struct StrlenTestStatic {
 }
 
 impl StrlenTest for StrlenTestStatic {
-    fn write_str(&self, mem: &mut Mmu, addr: u64) {
-        mem.write_bytes(addr, self.data, perm::NONE).unwrap();
+    fn write_str(&self, mem: &mut Mmu, addr: u64) -> Result<()> {
+        mem.write_bytes(addr, self.data, perm::NONE)?;
+        Ok(())
     }
     fn result(&self) -> u64 {
         self.result
     }
     fn data_len(&self) -> u64 {
         self.data.len().try_into().unwrap()
+    }
+    fn test_on_vm(
+        &self,
+        fun_addr: u64,
+        ret_addr: u64,
+        vm: &mut dyn Vm,
+    ) -> Result<bool> {
+        let mut params = [Param::HeapData(&self.data)];
+        let mut output = [Param::Usize(0)];
+        vm.call(fun_addr, ret_addr, &mut params, &mut output)?;
+        let [Param::Usize(output)] = output else { unreachable!() };
+        Ok(output != self.result())
     }
 }
 
@@ -29,14 +50,14 @@ pub struct StrlenTestLong {
 }
 
 impl StrlenTest for StrlenTestLong {
-    fn write_str(&self, mem: &mut Mmu, addr: u64) {
+    fn write_str(&self, mem: &mut Mmu, addr: u64) -> Result<()> {
         // TODO improve that
         mem.write_bytes(
             addr,
             &vec![self.data; self.data_len.try_into().unwrap()],
             perm::NONE,
-        )
-        .unwrap();
+        )?;
+        Ok(())
     }
     fn result(&self) -> u64 {
         self.data_len.into()
@@ -44,12 +65,34 @@ impl StrlenTest for StrlenTestLong {
     fn data_len(&self) -> u64 {
         self.data_len.into()
     }
+    fn test_on_vm(
+        &self,
+        fun_addr: u64,
+        ret_addr: u64,
+        vm: &mut dyn Vm,
+    ) -> Result<bool> {
+        let write_str = |mem: &mut Mmu, addr| self.write_str(mem, addr);
+        let mut params = [Param::HeapFn(self.data_len(), Box::new(write_str))];
+        let mut output = [Param::Usize(0)];
+        vm.call(fun_addr, ret_addr, &mut params, &mut output)?;
+        let [Param::Usize(output)] = output else { unreachable!() };
+        Ok(output != self.result())
+    }
 }
 
 pub trait StrlenTests:
     Iterator<Item = Box<dyn StrlenTest>> + Clone + Sized
 {
     fn max_len(&self) -> u64;
+    fn test_all(self, vm: &mut dyn Vm) -> Result<bool> {
+        let mut result = true;
+        let fun_addr = vm.lookup_symbol("strlen");
+        let ret_addr = vm.lookup_symbol("_dlstart");
+        for test in self {
+            result &= test.test_on_vm(fun_addr, ret_addr, vm)?;
+        }
+        Ok(result)
+    }
 }
 
 impl<I> StrlenTests for I

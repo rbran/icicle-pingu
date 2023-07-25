@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 icicle-vm = { path = "../icicle-emu/icicle-vm" }
 icicle-mem = { path = "../icicle-emu/icicle-mem" }
+pcode = { path = "../icicle-emu/sleigh/pcode" }
+anyhow = "1.0.72"
