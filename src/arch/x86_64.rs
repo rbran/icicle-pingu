@@ -13,17 +13,34 @@ use crate::vm::{Param, Vm};
 
 pub struct X86_64 {
     pub helper: IcicleHelper,
-    rdi: VarNode,
-    rsi: VarNode,
-    rdx: VarNode,
-    rcx: VarNode,
-    r8: VarNode,
-    r9: VarNode,
+    r: [VarNode; 6],
+    xmm_qa: [VarNode; 6],
+    xmm_da: [VarNode; 6],
     rax: VarNode,
     rsp: VarNode,
 }
 
 impl X86_64 {
+    const fn regs(idx: usize) -> &'static str {
+        match idx {
+            0 => "RDI",
+            1 => "RSI",
+            2 => "RDX",
+            3 => "RCX",
+            4 => "R8",
+            5 => "R9",
+            _ => unreachable!(),
+        }
+    }
+
+    fn xmm_qa(idx: usize) -> String {
+        format!("XMM{}_Qa", idx)
+    }
+
+    fn xmm_da(idx: usize) -> String {
+        format!("XMM{}_Qa", idx)
+    }
+
     pub fn new(musl: &Path) -> Result<Self> {
         let mut vm = icicle_vm::build(&icicle_vm::cpu::Config {
             triple: "x86_64-linux-musl".parse().unwrap(),
@@ -35,12 +52,21 @@ impl X86_64 {
             .load(&mut vm.cpu, musl.as_os_str().as_bytes())
             .map_err(|e| anyhow!(e))?;
 
-        let rdi = vm.cpu.arch.sleigh.get_reg("RDI").unwrap().var;
-        let rsi = vm.cpu.arch.sleigh.get_reg("RSI").unwrap().var;
-        let rdx = vm.cpu.arch.sleigh.get_reg("RDX").unwrap().var;
-        let rcx = vm.cpu.arch.sleigh.get_reg("RCX").unwrap().var;
-        let r8 = vm.cpu.arch.sleigh.get_reg("R8").unwrap().var;
-        let r9 = vm.cpu.arch.sleigh.get_reg("R9").unwrap().var;
+        let r = (0..6)
+            .map(|i| vm.cpu.arch.sleigh.get_reg(Self::regs(i)).unwrap().var)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let xmm_qa = (0..6)
+            .map(|i| vm.cpu.arch.sleigh.get_reg(&Self::xmm_qa(i)).unwrap().var)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let xmm_da = (0..6)
+            .map(|i| vm.cpu.arch.sleigh.get_reg(&Self::xmm_da(i)).unwrap().var)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
         let rax = vm.cpu.arch.sleigh.get_reg("RAX").unwrap().var;
         let rsp = vm.cpu.arch.sleigh.get_reg("RSP").unwrap().var;
         Ok(Self {
@@ -53,25 +79,10 @@ impl X86_64 {
             ),
             rax,
             rsp,
-            rdi,
-            rsi,
-            rdx,
-            rcx,
-            r8,
-            r9,
+            r,
+            xmm_qa,
+            xmm_da,
         })
-    }
-
-    fn reg(&self, idx: usize) -> VarNode {
-        match idx {
-            0 => self.rdi,
-            1 => self.rsi,
-            2 => self.rdx,
-            3 => self.rcx,
-            4 => self.r8,
-            5 => self.r9,
-            _ => todo!(),
-        }
     }
 
     fn stack_used(params: &[Param]) -> u64 {
@@ -96,11 +107,10 @@ impl X86_64 {
 
         let mut stack_pos = self.helper.stack_addr + self.helper.stack_size;
         // TODO: https://gitlab.com/x86-psABIs/x86-64-ABI/-/jobs/artifacts/master/raw/x86-64-ABI/abi.pdf?job=build
-        for (idx, param) in params.iter_mut().enumerate() {
-            let reg = self.reg(idx);
+        for (i, param) in params.iter_mut().enumerate() {
             match param {
                 Param::Usize(value) => {
-                    self.helper.icicle.cpu.write_reg(reg, *value)
+                    self.helper.icicle.cpu.write_reg(self.r[i], *value)
                 }
                 Param::HeapData(data) => {
                     let addr = self.helper.malloc(data.len() as u64)?;
@@ -111,13 +121,23 @@ impl X86_64 {
                         perm::NONE,
                     )?;
                     // put the addr to the reg
-                    self.helper.icicle.cpu.write_reg(reg, addr)
+                    self.helper.icicle.cpu.write_reg(self.r[i], addr)
                 }
                 Param::HeapFn(write_data) => {
                     let addr = write_data(&mut self.helper)?;
                     // put the addr to the reg
-                    self.helper.icicle.cpu.write_reg(reg, addr)
+                    self.helper.icicle.cpu.write_reg(self.r[i], addr)
                 }
+                Param::F32(value) => self
+                    .helper
+                    .icicle
+                    .cpu
+                    .write_reg(self.xmm_da[i], value.to_bits() as u64),
+                Param::F64(value) => self
+                    .helper
+                    .icicle
+                    .cpu
+                    .write_reg(self.xmm_qa[i], value.to_bits()),
             }
         }
 
@@ -146,6 +166,16 @@ impl X86_64 {
             Return::CString(data) => {
                 let addr = self.helper.icicle.cpu.read_reg(self.rax);
                 self.helper.icicle.cpu.mem.read_cstr(addr, data)?;
+            }
+            Return::F32(value) => {
+                *value = f32::from_bits(
+                    self.helper.icicle.cpu.read_reg(self.xmm_da[0]) as u32,
+                )
+            }
+            Return::F64(value) => {
+                *value = f64::from_bits(
+                    self.helper.icicle.cpu.read_reg(self.xmm_qa[0]),
+                )
             }
         }
         Ok(())

@@ -11,6 +11,7 @@ use crate::vm::{IcicleHelper, Param, Return, Vm};
 pub struct X86 {
     pub helper: IcicleHelper,
     eax: VarNode,
+    st0: VarNode,
     esp: VarNode,
 }
 
@@ -27,6 +28,7 @@ impl X86 {
             .map_err(|e| anyhow!(e))?;
 
         let eax = vm.cpu.arch.sleigh.get_reg("EAX").unwrap().var;
+        let st0 = vm.cpu.arch.sleigh.get_reg("ST0").unwrap().var;
         let esp = vm.cpu.arch.sleigh.get_reg("ESP").unwrap().var;
         Ok(Self {
             helper: IcicleHelper::new(
@@ -37,6 +39,7 @@ impl X86 {
                 0x1000_0000,
             ),
             eax,
+            st0,
             esp,
         })
     }
@@ -48,6 +51,8 @@ impl X86 {
                 Param::Usize(_) => 4,
                 Param::HeapData(_) => 4,
                 Param::HeapFn(_) => 4,
+                Param::F32(_) => 4,
+                Param::F64(_) => 8,
             })
             .sum::<u64>()
             // + 4 for the return address added to the stack
@@ -98,6 +103,22 @@ impl X86 {
                         perm::NONE,
                     )?;
                 }
+                Param::F32(value) => {
+                    stack_pos -= 4;
+                    self.helper.icicle.cpu.mem.write_u32(
+                        stack_pos,
+                        value.to_bits(),
+                        perm::NONE,
+                    )?;
+                }
+                Param::F64(value) => {
+                    stack_pos -= 8;
+                    self.helper.icicle.cpu.mem.write_u64(
+                        stack_pos,
+                        value.to_bits(),
+                        perm::NONE,
+                    )?;
+                }
             }
         }
 
@@ -124,6 +145,15 @@ impl X86 {
             Return::CString(data) => {
                 let addr = self.helper.icicle.cpu.read_reg(self.eax);
                 self.helper.icicle.cpu.mem.read_cstr(addr, data)?;
+            }
+            Return::F32(value) => {
+                *value = f32::from_bits(
+                    self.helper.icicle.cpu.read_reg(self.st0) as u32,
+                )
+            }
+            Return::F64(value) => {
+                *value =
+                    f64::from_bits(self.helper.icicle.cpu.read_reg(self.st0))
             }
         }
         Ok(())

@@ -6,6 +6,10 @@ use crate::helper;
 pub enum Param<'a, 'b> {
     /// this usize is the param
     Usize(u64),
+    /// a 32 bits float
+    F32(f32),
+    /// a 64 bits float (duble)
+    F64(f64),
     /// put the data to the heap and add a pointer as a param
     HeapData(&'a [u8]),
     /// the Fn will put the data to the heap and return an point as a param
@@ -15,6 +19,10 @@ pub enum Param<'a, 'b> {
 pub enum Return {
     /// Is a simple usize value
     Usize(u64),
+    /// a 32 bits float
+    F32(f32),
+    /// a 64 bits float (duble)
+    F64(f64),
     /// value is an addr, read the CString it points to
     CString(Vec<u8>),
 }

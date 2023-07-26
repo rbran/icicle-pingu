@@ -13,7 +13,9 @@ use crate::vm::{Param, Vm};
 
 pub struct Aarch64 {
     pub helper: IcicleHelper,
-    regs: Vec<VarNode>,
+    w: [VarNode; 31],
+    d: [VarNode; 8],
+    s: [VarNode; 8],
     sp: VarNode,
 }
 
@@ -29,26 +31,55 @@ impl Aarch64 {
             .load(&mut vm.cpu, musl.as_os_str().as_bytes())
             .map_err(|e| anyhow!(e))?;
 
-        let regs = (0..=30)
+        let w = (0..31)
             .map(|reg| {
                 vm.cpu
                     .arch
                     .sleigh
-                    .get_reg(&format!("x{}", reg))
+                    .get_reg(&format!("w{}", reg))
                     .unwrap()
                     .var
             })
-            .collect();
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let d = (0..=7)
+            .map(|reg| {
+                vm.cpu
+                    .arch
+                    .sleigh
+                    .get_reg(&format!("d{}", reg))
+                    .unwrap()
+                    .var
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let s = (0..=7)
+            .map(|reg| {
+                vm.cpu
+                    .arch
+                    .sleigh
+                    .get_reg(&format!("s{}", reg))
+                    .unwrap()
+                    .var
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
         let sp = vm.cpu.arch.sleigh.get_reg("sp").unwrap().var;
+        let helper = IcicleHelper::new(
+            vm,
+            0x1000_0000,
+            0x1000_0000,
+            0x2000_0000,
+            0x1000_0000,
+        );
         Ok(Self {
-            helper: IcicleHelper::new(
-                vm,
-                0x1000_0000,
-                0x1000_0000,
-                0x2000_0000,
-                0x1000_0000,
-            ),
-            regs,
+            helper,
+            w,
+            d,
+            s,
             sp,
         })
     }
@@ -75,10 +106,9 @@ impl Aarch64 {
             todo!()
         }
         for (i, param) in params.iter_mut().enumerate() {
-            let reg = self.regs[i];
             match param {
                 Param::Usize(value) => {
-                    self.helper.icicle.cpu.write_reg(reg, *value)
+                    self.helper.icicle.cpu.write_reg(self.w[i], *value)
                 }
                 Param::HeapData(data) => {
                     let addr = self.helper.malloc(data.len() as u64)?;
@@ -89,18 +119,26 @@ impl Aarch64 {
                         perm::NONE,
                     )?;
                     // put the addr to the reg
-                    self.helper.icicle.cpu.write_reg(reg, addr)
+                    self.helper.icicle.cpu.write_reg(self.w[i], addr)
                 }
                 Param::HeapFn(write_data) => {
                     let addr = write_data(&mut self.helper)?;
                     // put the addr to the reg
-                    self.helper.icicle.cpu.write_reg(reg, addr)
+                    self.helper.icicle.cpu.write_reg(self.w[i], addr)
+                }
+                Param::F32(value) => self
+                    .helper
+                    .icicle
+                    .cpu
+                    .write_reg(self.s[i], value.to_bits() as u64),
+                Param::F64(value) => {
+                    self.helper.icicle.cpu.write_reg(self.d[i], value.to_bits())
                 }
             }
         }
 
         // write the return addr to x30/LR
-        self.helper.icicle.cpu.write_reg(self.regs[30], return_addr);
+        self.helper.icicle.cpu.write_reg(self.w[30], return_addr);
         Ok(stack_pos)
     }
 
@@ -109,14 +147,23 @@ impl Aarch64 {
             todo!()
         }
         for (i, result) in results.iter_mut().enumerate() {
-            let reg = self.regs[i];
             match result {
                 Return::Usize(value) => {
-                    *value = self.helper.icicle.cpu.read_reg(reg)
+                    *value = self.helper.icicle.cpu.read_reg(self.w[i])
                 }
                 Return::CString(data) => {
-                    let addr = self.helper.icicle.cpu.read_reg(reg);
+                    let addr = self.helper.icicle.cpu.read_reg(self.w[i]);
                     self.helper.icicle.cpu.mem.read_cstr(addr, data)?;
+                }
+                Return::F32(value) => {
+                    *value = f32::from_bits(
+                        self.helper.icicle.cpu.read_reg(self.s[i]) as u32,
+                    )
+                }
+                Return::F64(value) => {
+                    *value = f64::from_bits(
+                        self.helper.icicle.cpu.read_reg(self.d[i]),
+                    )
                 }
             }
         }
