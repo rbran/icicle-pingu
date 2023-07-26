@@ -42,11 +42,5 @@ fn main() -> Result<()> {
     assert!(strlen::all_tests(&mut aarch64_vm)?);
     assert!(strcat::all_tests(&mut aarch64_vm)?);
 
-    //let mut aarch64_be_vm = aarch64::Aarch64::new(
-    //    "aarch64_be-linux-musl",
-    //    Path::new("/home/rbran/src/icicle-pingu/bins/aarch64_be-linux-musl-libc.so"),
-    //)?;
-    //....
-
     Ok(())
 }

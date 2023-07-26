@@ -91,7 +91,8 @@ impl X86_64 {
         if params.len() > 6 {
             todo!()
         }
-        let stack_len = Self::stack_used(params);
+        //TODO min len for the stack
+        let stack_len = Self::stack_used(params).max(0x1000);
         self.helper.set_stack_len(stack_len)?;
 
         let mut stack_pos = self.helper.stack_addr + self.helper.stack_size;

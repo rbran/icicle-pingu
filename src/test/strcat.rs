@@ -18,12 +18,24 @@ impl StrcatTestStatic {
         ret_addr: u64,
         vm: &mut impl Vm,
     ) -> Result<bool> {
-        let mut params =
-            [Param::HeapData(&self.src), Param::HeapData(&self.dst)];
+        // we need to make sure the correct space is allocated for the result
+        let dst_with_space: Vec<u8> = self
+            .dst
+            .iter()
+            .copied()
+            .chain(self.result.iter().map(|_| 0))
+            .collect();
+        let mut params = [
+            //dst
+            Param::HeapData(&dst_with_space),
+            //src
+            Param::HeapData(&self.src),
+        ];
         let mut output =
             [Return::CString(Vec::with_capacity(self.result.len()))];
         vm.call(fun_addr, ret_addr, &mut params, &mut output)?;
         let [Return::CString(output)] = output else { unreachable!() };
+        //TODO check that output points to the same as param dst
         Ok(output == self.result)
     }
 }
@@ -41,40 +53,45 @@ impl StrcatTestLong {
         ret_addr: u64,
         vm: &mut impl Vm,
     ) -> Result<bool> {
-        let write_str = |data: u8, len: u64| {
+        let write_str = |data: u8, len: u64, extra: u64| {
             move |vm: &mut IcicleHelper| {
                 // TODO improve that
-                let src_addr = vm.malloc(len + 1)?;
+                let addr = vm.malloc(len + 1 + extra)?;
                 for i in 0..len {
-                    vm.icicle.cpu.mem.write_u8(
-                        src_addr + i,
-                        data,
-                        perm::NONE,
-                    )?;
+                    vm.icicle.cpu.mem.write_u8(addr + i, data, perm::NONE)?;
                 }
-                vm.icicle.cpu.mem.write_u8(src_addr + len, 0, perm::NONE)?;
-                Ok(src_addr)
+                // write the \x00
+                vm.icicle.cpu.mem.write_u8(addr + len, 0, perm::NONE)?;
+                Ok(addr)
             }
         };
         let mut params = [
-            Param::HeapFn(Box::new(write_str(self.src.0, self.src.1))),
-            Param::HeapFn(Box::new(write_str(self.dst.0, self.dst.1))),
+            //dst
+            Param::HeapFn(Box::new(write_str(
+                self.dst.0, self.dst.1, self.src.1,
+            ))),
+            //src
+            Param::HeapFn(Box::new(write_str(self.src.0, self.src.1, 0))),
         ];
         let mut output = [Return::CString(Vec::with_capacity(
             (self.res.1 + self.res.3).try_into().unwrap(),
         ))];
         vm.call(fun_addr, ret_addr, &mut params, &mut output)?;
         let [Return::CString(output)] = output else { unreachable!() };
-        let result = (0..self.res.1)
-            .map(|_| self.res.0)
-            .chain((0..self.res.3).map(|_| self.res.2));
-        Ok(output.into_iter().zip(result).all(|(x, y)| x == y))
+        let result = (0..self.res.3)
+            .map(|_| self.res.2)
+            .chain((0..self.res.1).map(|_| self.res.0));
+        let all_equal = output.into_iter().zip(result).all(|(x, y)| x == y);
+        Ok(all_equal)
     }
 }
 
-pub const TESTS_STATIC: [(&[u8], &[u8], &[u8]); 2] = [
+pub const TESTS_STATIC: [(&[u8], &[u8], &[u8]); 5] = [
+    (b"\x00", b"\x01\x02\x03\x00", b"\x01\x02\x03"),
     (b"\x01\x02\x03\x00", b"\x00\x01\x02\x03", b"\x01\x02\x03"),
     (b"\x00\x02\x03\x00", b"\x01\x02\x03\x00", b"\x01\x02\x03"),
+    (b"\x02\x01\x00", b"\x01\x02\x00", b"\x01\x02\x02\x01"),
+    (b"\x01\x02\x00", b"\x02\x01\x00", b"\x02\x01\x01\x02"),
 ];
 
 const TESTS_LONG: [((u8, u64), (u8, u64), (u8, u64, u8, u64)); 2] = [

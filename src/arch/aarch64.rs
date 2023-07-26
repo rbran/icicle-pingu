@@ -62,10 +62,15 @@ impl Aarch64 {
 
     fn set_call(
         &mut self,
-        _stack_pos: &mut u64,
         return_addr: u64,
         params: &mut [Param],
-    ) -> Result<()> {
+    ) -> Result<u64> {
+        //TODO min len for the stack
+        let stack_len = Self::stack_used(params).max(0x1000);
+        self.helper.set_stack_len(stack_len)?;
+
+        let stack_pos = self.helper.stack_addr + self.helper.stack_size;
+
         if params.len() > 7 {
             todo!()
         }
@@ -96,7 +101,7 @@ impl Aarch64 {
 
         // write the return addr to x30/LR
         self.helper.icicle.cpu.write_reg(self.regs[30], return_addr);
-        Ok(())
+        Ok(stack_pos)
     }
 
     fn get_results(&mut self, results: &mut [Return]) -> Result<()> {
@@ -141,8 +146,7 @@ impl Vm for Aarch64 {
         let stack_len = Self::stack_used(params);
         self.helper.set_stack_len(stack_len)?;
 
-        let mut stack_pos = self.helper.stack_addr + self.helper.stack_size;
-        self.set_call(&mut stack_pos, return_addr, params)?;
+        let stack_pos = self.set_call(return_addr, params)?;
         // set stack addr to register
         self.helper.icicle.cpu.write_reg(self.sp, stack_pos);
         // set the function addr to pc

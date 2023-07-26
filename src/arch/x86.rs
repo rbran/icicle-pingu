@@ -59,12 +59,13 @@ impl X86 {
         return_addr: u32,
         params: &mut [Param],
     ) -> Result<u64> {
-        let stack_len = Self::stack_used(params);
+        //TODO min len for the stack
+        let stack_len = Self::stack_used(params).max(0x1000);
         self.helper.set_stack_len(stack_len)?;
 
         let mut stack_pos = self.helper.stack_addr + self.helper.stack_size;
 
-        for param in params {
+        for param in params.into_iter().rev() {
             match param {
                 Param::Usize(value) => {
                     stack_pos -= 4;
@@ -89,8 +90,8 @@ impl X86 {
                     )?;
                 }
                 Param::HeapFn(write_data) => {
-                    stack_pos -= 4;
                     let addr = write_data(&mut self.helper)?;
+                    stack_pos -= 4;
                     self.helper.icicle.cpu.mem.write_u32(
                         stack_pos,
                         addr as u32,
