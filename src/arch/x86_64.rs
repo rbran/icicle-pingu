@@ -65,12 +65,11 @@ impl X86_64 {
     fn reg(&self, idx: usize) -> VarNode {
         match idx {
             0 => self.rdi,
-            1 => self.rdi,
-            2 => self.rsi,
-            3 => self.rdx,
-            4 => self.rcx,
-            5 => self.r8,
-            6 => self.r9,
+            1 => self.rsi,
+            2 => self.rdx,
+            3 => self.rcx,
+            4 => self.r8,
+            5 => self.r9,
             _ => todo!(),
         }
     }
