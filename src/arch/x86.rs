@@ -6,7 +6,7 @@ use icicle_mem::perm;
 use icicle_vm;
 use pcode::VarNode;
 
-use crate::vm::{IcicleHelper, Param, Vm};
+use crate::vm::{IcicleHelper, Param, Return, Vm};
 
 pub struct X86 {
     pub helper: IcicleHelper,
@@ -47,27 +47,29 @@ impl X86 {
             .map(|param| match param {
                 Param::Usize(_) => 4,
                 Param::HeapData(_) => 4,
-                Param::StackData(data) => data.len() as u64,
-                Param::HeapFn(_, _) => 4,
-                Param::StackFn(len, _) => *len,
+                Param::HeapFn(_) => 4,
             })
             .sum::<u64>()
             // + 4 for the return address added to the stack
             + 4
     }
 
-    fn set_stack(
+    fn set_call(
         &mut self,
-        stack_pos: &mut u64,
         return_addr: u32,
         params: &mut [Param],
-    ) -> Result<()> {
+    ) -> Result<u64> {
+        let stack_len = Self::stack_used(params);
+        self.helper.set_stack_len(stack_len)?;
+
+        let mut stack_pos = self.helper.stack_addr + self.helper.stack_size;
+
         for param in params {
             match param {
                 Param::Usize(value) => {
-                    *stack_pos -= 4;
+                    stack_pos -= 4;
                     self.helper.icicle.cpu.mem.write_u32(
-                        *stack_pos,
+                        stack_pos,
                         *value as u32,
                         perm::NONE,
                     )?;
@@ -79,55 +81,49 @@ impl X86 {
                         data,
                         perm::NONE,
                     )?;
-                    *stack_pos -= 4;
+                    stack_pos -= 4;
                     self.helper.icicle.cpu.mem.write_u32(
-                        *stack_pos,
+                        stack_pos,
                         addr as u32,
                         perm::NONE,
                     )?;
                 }
-                Param::HeapFn(len, write_data) => {
-                    *stack_pos -= 4;
-                    let addr = self.helper.malloc(*len)?;
-                    write_data(&mut self.helper.icicle.cpu.mem, addr)?;
+                Param::HeapFn(write_data) => {
+                    stack_pos -= 4;
+                    let addr = write_data(&mut self.helper)?;
                     self.helper.icicle.cpu.mem.write_u32(
-                        *stack_pos,
+                        stack_pos,
                         addr as u32,
                         perm::NONE,
                     )?;
-                }
-                Param::StackData(data) => {
-                    *stack_pos -= data.len() as u64;
-                    self.helper.icicle.cpu.mem.write_bytes(
-                        *stack_pos,
-                        data,
-                        perm::NONE,
-                    )?;
-                }
-                Param::StackFn(len, write_data) => {
-                    *stack_pos -= *len;
-                    write_data(&mut self.helper.icicle.cpu.mem, *stack_pos)?;
                 }
             }
         }
 
         // add the return addr to the stack
-        *stack_pos -= 4;
+        stack_pos -= 4;
         self.helper.icicle.cpu.mem.write_u32(
-            *stack_pos,
+            stack_pos,
             return_addr,
             perm::NONE,
         )?;
-        Ok(())
+        Ok(stack_pos)
     }
 
-    fn get_results(&mut self, results: &mut [Param]) -> Result<()> {
-        match results {
-            [] => {}
-            [Param::Usize(value)] => {
+    fn get_results(&mut self, results: &mut [Return]) -> Result<()> {
+        let result = match results {
+            [] => return Ok(()),
+            [result] => result,
+            _ => todo!(),
+        };
+        match result {
+            Return::Usize(value) => {
                 *value = self.helper.icicle.cpu.read_reg(self.eax)
             }
-            _ => todo!(),
+            Return::CString(data) => {
+                let addr = self.helper.icicle.cpu.read_reg(self.eax);
+                self.helper.icicle.cpu.mem.read_cstr(addr, data)?;
+            }
         }
         Ok(())
     }
@@ -147,18 +143,14 @@ impl Vm for X86 {
         function_addr: u64,
         return_addr: u64,
         params: &mut [Param],
-        results: &mut [Param],
+        results: &mut [Return],
     ) -> Result<()> {
         //clean the heap
         self.helper.free_all();
 
-        let stack_len = Self::stack_used(params);
-        self.helper.set_stack_len(stack_len)?;
-
-        let mut stack_pos = self.helper.stack_addr + self.helper.stack_size;
-        self.set_stack(&mut stack_pos, return_addr as u32, params)?;
+        let stack_addr = self.set_call(return_addr as u32, params)?;
         // set stack addr to register
-        self.helper.icicle.cpu.write_reg(self.esp, stack_pos);
+        self.helper.icicle.cpu.write_reg(self.esp, stack_addr);
 
         // set the function addr to pc
         self.helper.icicle.cpu.write_pc(function_addr);

@@ -1,6 +1,6 @@
 use icicle_mem::perm;
 
-use crate::vm::IcicleHelper;
+use crate::vm::{IcicleHelper, Return};
 
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
@@ -11,17 +11,16 @@ use pcode::VarNode;
 
 use crate::vm::{Param, Vm};
 
-pub struct X86_64 {
+pub struct Aarch64 {
     pub helper: IcicleHelper,
-    rax: VarNode,
-    rsp: VarNode,
-    rdi: VarNode,
+    regs: Vec<VarNode>,
+    sp: VarNode,
 }
 
-impl X86_64 {
-    pub fn new(musl: &Path) -> Result<Self> {
+impl Aarch64 {
+    pub fn new(triple: &str, musl: &Path) -> Result<Self> {
         let mut vm = icicle_vm::build(&icicle_vm::cpu::Config {
-            triple: "x86_64-linux-musl".parse().unwrap(),
+            triple: triple.parse().unwrap(),
             enable_shadow_stack: false,
             ..icicle_vm::cpu::Config::default()
         })?;
@@ -30,9 +29,17 @@ impl X86_64 {
             .load(&mut vm.cpu, musl.as_os_str().as_bytes())
             .map_err(|e| anyhow!(e))?;
 
-        let rax = vm.cpu.arch.sleigh.get_reg("RAX").unwrap().var;
-        let rsp = vm.cpu.arch.sleigh.get_reg("RSP").unwrap().var;
-        let rdi = vm.cpu.arch.sleigh.get_reg("RDI").unwrap().var;
+        let regs = (0..=30)
+            .map(|reg| {
+                vm.cpu
+                    .arch
+                    .sleigh
+                    .get_reg(&format!("x{}", reg))
+                    .unwrap()
+                    .var
+            })
+            .collect();
+        let sp = vm.cpu.arch.sleigh.get_reg("sp").unwrap().var;
         Ok(Self {
             helper: IcicleHelper::new(
                 vm,
@@ -41,42 +48,34 @@ impl X86_64 {
                 0x2000_0000,
                 0x1000_0000,
             ),
-            rax,
-            rsp,
-            rdi,
+            regs,
+            sp,
         })
     }
 
     fn stack_used(params: &[Param]) -> u64 {
-        params
-            .iter()
-            .enumerate()
-            .map(|(idx, param)| match (idx, param) {
-                (0, Param::Usize(_)) => 0,
-                (0, Param::HeapData(_)) => 0,
-                //(0, Param::StackData(data)) => data.len() as u64,
-                (0, Param::HeapFn(_, _)) => 0,
-                //(0, Param::StackFn(len, _)) => *len,
-                _ => todo!(),
-            })
-            .sum::<u64>()
-            // + 8 for the return address added to the stack
-            + 8
+        if params.len() > 7 {
+            todo!();
+        }
+        0
     }
 
-    fn set_stack(
+    fn set_call(
         &mut self,
-        stack_pos: &mut u64,
+        _stack_pos: &mut u64,
         return_addr: u64,
         params: &mut [Param],
     ) -> Result<()> {
-        for (idx, param) in params.iter_mut().enumerate() {
-            // TODO: https://gitlab.com/x86-psABIs/x86-64-ABI/-/jobs/artifacts/master/raw/x86-64-ABI/abi.pdf?job=build
-            match (idx, param) {
-                (0, Param::Usize(value)) => {
-                    self.helper.icicle.cpu.write_reg(self.rdi, *value)
+        if params.len() > 7 {
+            todo!()
+        }
+        for (i, param) in params.iter_mut().enumerate() {
+            let reg = self.regs[i];
+            match param {
+                Param::Usize(value) => {
+                    self.helper.icicle.cpu.write_reg(reg, *value)
                 }
-                (0, Param::HeapData(data)) => {
+                Param::HeapData(data) => {
                     let addr = self.helper.malloc(data.len() as u64)?;
                     // write the heap
                     self.helper.icicle.cpu.mem.write_bytes(
@@ -85,44 +84,42 @@ impl X86_64 {
                         perm::NONE,
                     )?;
                     // put the addr to the reg
-                    self.helper.icicle.cpu.write_reg(self.rdi, addr)
+                    self.helper.icicle.cpu.write_reg(reg, addr)
                 }
-                (0, Param::HeapFn(len, write_data)) => {
-                    *stack_pos -= 8;
-                    let addr = self.helper.malloc(*len)?;
-                    write_data(&mut self.helper.icicle.cpu.mem, addr)?;
+                Param::HeapFn(write_data) => {
+                    let addr = write_data(&mut self.helper)?;
                     // put the addr to the reg
-                    self.helper.icicle.cpu.write_reg(self.rdi, addr)
+                    self.helper.icicle.cpu.write_reg(reg, addr)
                 }
-                _ => todo!(),
             }
         }
 
-        // add the return addr to the stack
-        *stack_pos -= 8;
-        self.helper
-            .icicle
-            .cpu
-            .mem
-            .write_u64(*stack_pos, return_addr, perm::NONE)
-            .unwrap();
-
+        // write the return addr to x30/LR
+        self.helper.icicle.cpu.write_reg(self.regs[30], return_addr);
         Ok(())
     }
 
-    fn get_results(&mut self, results: &mut [Param]) -> Result<()> {
-        match results {
-            [] => {}
-            [Param::Usize(value)] => {
-                *value = self.helper.icicle.cpu.read_reg(self.rax)
+    fn get_results(&mut self, results: &mut [Return]) -> Result<()> {
+        if results.len() > 7 {
+            todo!()
+        }
+        for (i, result) in results.iter_mut().enumerate() {
+            let reg = self.regs[i];
+            match result {
+                Return::Usize(value) => {
+                    *value = self.helper.icicle.cpu.read_reg(reg)
+                }
+                Return::CString(data) => {
+                    let addr = self.helper.icicle.cpu.read_reg(reg);
+                    self.helper.icicle.cpu.mem.read_cstr(addr, data)?;
+                }
             }
-            _ => todo!(),
         }
         Ok(())
     }
 }
 
-impl Vm for X86_64 {
+impl Vm for Aarch64 {
     fn helper(&self) -> &IcicleHelper {
         &self.helper
     }
@@ -136,7 +133,7 @@ impl Vm for X86_64 {
         function_addr: u64,
         return_addr: u64,
         params: &mut [Param],
-        results: &mut [Param],
+        results: &mut [Return],
     ) -> Result<()> {
         //clean the heap
         self.helper.free_all();
@@ -145,12 +142,12 @@ impl Vm for X86_64 {
         self.helper.set_stack_len(stack_len)?;
 
         let mut stack_pos = self.helper.stack_addr + self.helper.stack_size;
-        self.set_stack(&mut stack_pos, return_addr, params)?;
+        self.set_call(&mut stack_pos, return_addr, params)?;
         // set stack addr to register
-        self.helper.icicle.cpu.write_reg(self.rsp, stack_pos);
-
+        self.helper.icicle.cpu.write_reg(self.sp, stack_pos);
         // set the function addr to pc
         self.helper.icicle.cpu.write_pc(function_addr);
+
         let vm_exit = self.helper.icicle.run_until(return_addr);
         if vm_exit != icicle_vm::VmExit::Breakpoint {
             bail!(

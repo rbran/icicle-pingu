@@ -1,5 +1,5 @@
 use anyhow::Result;
-use icicle_mem::{perm, Mapping};
+use icicle_mem::Mapping;
 
 pub fn create_empty_memory(
     mem: &mut icicle_mem::Mmu,

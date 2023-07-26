@@ -1,16 +1,22 @@
 use anyhow::{bail, Result};
-use icicle_mem::{perm, Mmu};
+use icicle_mem::perm;
 
 use crate::helper;
 
 pub enum Param<'a, 'b> {
+    /// this usize is the param
     Usize(u64),
-    // put the data to the heap and add a pointer to the stack
+    /// put the data to the heap and add a pointer as a param
     HeapData(&'a [u8]),
-    HeapFn(u64, Box<dyn FnMut(&mut Mmu, u64) -> Result<()> + 'b>),
-    // put the data directly to the stack
-    StackData(&'a [u8]),
-    StackFn(u64, Box<dyn FnMut(&mut Mmu, u64) -> Result<()> + 'b>),
+    /// the Fn will put the data to the heap and return an point as a param
+    HeapFn(Box<dyn FnMut(&mut IcicleHelper) -> Result<u64> + 'b>),
+}
+
+pub enum Return {
+    /// Is a simple usize value
+    Usize(u64),
+    /// value is an addr, read the CString it points to
+    CString(Vec<u8>),
 }
 
 pub trait Vm {
@@ -27,8 +33,8 @@ pub trait Vm {
         &mut self,
         function_addr: u64,
         return_addr: u64,
-        params: &mut [Param<'_, '_>],
-        results: &mut [Param<'_, '_>],
+        params: &mut [Param],
+        results: &mut [Return],
     ) -> Result<()>;
 }
 
@@ -36,11 +42,11 @@ pub struct IcicleHelper {
     pub icicle: icicle_vm::Vm,
     pub stack_addr: u64,
     pub stack_size: u64,
-    stack_max: u64,
-    heap_addr: u64,
-    heap_used: u64,
-    heap_size: u64,
-    heap_max: u64,
+    pub stack_max: u64,
+    pub heap_addr: u64,
+    pub heap_used: u64,
+    pub heap_size: u64,
+    pub heap_max: u64,
 }
 
 impl IcicleHelper {
