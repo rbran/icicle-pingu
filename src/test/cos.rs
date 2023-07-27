@@ -24,8 +24,8 @@ impl CosTestStatic {
 pub const TESTS_STATIC: &[f64] =
     &[1.0, 0.0, 1.2, 8.4, 90.0, 90.00001, 1.0e-6, 1.0e+6];
 pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
-    println!("cos");
-    let fun_addr = vm.lookup_symbol("cos");
+    const FN_SYM: &str = "cos";
+    let fun_addr = vm.lookup_symbol(FN_SYM);
     let ret_addr = vm.lookup_symbol("_dlstart");
 
     let tests_static = TESTS_STATIC.into_iter().map(|value| CosTestStatic {
@@ -33,10 +33,8 @@ pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
         result: value.cos(),
     });
     for (i, test) in tests_static.enumerate() {
-        print!("test static {} f64({}) ", i, test.param);
-        let result = test.test_on_vm(fun_addr, ret_addr, vm)?;
-        println!("{}", if result { "Ok" } else { "Err" });
-        if !result {
+        if !test.test_on_vm(fun_addr, ret_addr, vm)? {
+            println!("{} Error test static {} f64({})", FN_SYM, i, test.param);
             return Ok(false);
         }
     }

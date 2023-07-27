@@ -22,6 +22,8 @@ mod tests {
         result &= strcat::all_tests(&mut vm)?;
         result &= cos::all_tests(&mut vm)?;
         result &= sin::all_tests(&mut vm)?;
+        result &= rint::all_tests(&mut vm)?;
+        result &= rintf::all_tests(&mut vm)?;
         Ok(result)
     }
 

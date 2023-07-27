@@ -73,8 +73,8 @@ pub const TESTS_STATIC: [(&[u8], u64); 10] = [
 ];
 pub const TESTS_LONG: [(u8, u64); 2] = [(0x01, 0x1234), (0xff, 0x4321)];
 pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
-    println!("strlen");
-    let fun_addr = vm.lookup_symbol("strlen");
+    const FN_SYM: &str = "strlen";
+    let fun_addr = vm.lookup_symbol(FN_SYM);
     let ret_addr = vm.lookup_symbol("_dlstart");
 
     // test short strings
@@ -82,10 +82,8 @@ pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
         .into_iter()
         .map(|(data, result)| StrlenTestStatic { data, result });
     for (i, test) in tests_static.enumerate() {
-        print!("test static {} ", i);
-        let result = test.test_on_vm(fun_addr, ret_addr, vm)?;
-        println!("{}", if result { "Ok" } else { "Err" });
-        if !result {
+        if !test.test_on_vm(fun_addr, ret_addr, vm)? {
+            println!("{} Error test static {} ", FN_SYM, i);
             return Ok(false);
         }
     }
@@ -94,12 +92,9 @@ pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
     let tests_long = TESTS_LONG
         .into_iter()
         .map(|(data, data_len)| StrlenTestLong { data, data_len });
-
     for (i, test) in tests_long.enumerate() {
-        print!("test long {} ", i);
-        let result = test.test_on_vm(fun_addr, ret_addr, vm)?;
-        println!("{}", if result { "Ok" } else { "Err" });
-        if !result {
+        if !test.test_on_vm(fun_addr, ret_addr, vm)? {
+            println!("{} Error test long {} ", FN_SYM, i);
             return Ok(false);
         }
     }

@@ -100,8 +100,8 @@ const TESTS_LONG: [((u8, u64), (u8, u64), (u8, u64, u8, u64)); 2] = [
 ];
 
 pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
-    println!("strcat");
-    let fun_addr = vm.lookup_symbol("strcat");
+    const FN_SYM: &str = "strcat";
+    let fun_addr = vm.lookup_symbol(FN_SYM);
     let ret_addr = vm.lookup_symbol("_dlstart");
 
     // test strlen tests with an empty string
@@ -119,10 +119,8 @@ pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
         .into_iter()
         .map(|(src, dst, result)| StrcatTestStatic { src, dst, result });
     for (i, test) in tests_strlen.chain(tests_strcat).enumerate() {
-        print!("test static {} ", i);
-        let result = test.test_on_vm(fun_addr, ret_addr, vm)?;
-        println!("{}", if result { "Ok" } else { "Err" });
-        if !result {
+        if !test.test_on_vm(fun_addr, ret_addr, vm)? {
+            println!("{} Error test static {}", FN_SYM, i);
             return Ok(false);
         }
     }
@@ -132,10 +130,8 @@ pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
         .into_iter()
         .map(|(src, dst, res)| StrcatTestLong { src, dst, res });
     for (i, test) in tests_long.enumerate() {
-        print!("test long {} ", i);
-        let result = test.test_on_vm(fun_addr, ret_addr, vm)?;
-        println!("{}", if result { "Ok" } else { "Err" });
-        if !result {
+        if !test.test_on_vm(fun_addr, ret_addr, vm)? {
+            println!("{} Error test long {}", FN_SYM, i);
             return Ok(false);
         }
     }

@@ -1,13 +1,12 @@
-use super::cos::TESTS_STATIC;
 use crate::vm::{Param, Return, Vm};
 use anyhow::Result;
 
-pub struct SinTestStatic {
+pub struct TestStatic {
     param: f64,
     result: f64,
 }
 
-impl SinTestStatic {
+impl TestStatic {
     fn test_on_vm(
         &self,
         fun_addr: u64,
@@ -22,14 +21,16 @@ impl SinTestStatic {
     }
 }
 
+pub const TESTS_STATIC: &[f64] =
+    &[1.0, 0.0, 1.2, 8.4, 90.6, 1031.5, 2.5555555556, 90.00001, 1.0e-6, 1.0e+6];
 pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
-    const FN_SYM: &str = "sin";
+    const FN_SYM: &str = "rint";
     let fun_addr = vm.lookup_symbol(FN_SYM);
     let ret_addr = vm.lookup_symbol("_dlstart");
 
-    let tests_static = TESTS_STATIC.into_iter().map(|value| SinTestStatic {
+    let tests_static = TESTS_STATIC.into_iter().map(|value| TestStatic {
         param: *value,
-        result: value.sin(),
+        result: value.round(),
     });
     for (i, test) in tests_static.enumerate() {
         if !test.test_on_vm(fun_addr, ret_addr, vm)? {
