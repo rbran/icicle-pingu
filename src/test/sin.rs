@@ -23,6 +23,7 @@ impl SinTestStatic {
 }
 
 pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
+    println!("sin");
     let fun_addr = vm.lookup_symbol("sin");
     let ret_addr = vm.lookup_symbol("_dlstart");
 
@@ -30,8 +31,11 @@ pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
         param: *value,
         result: value.sin(),
     });
-    for test in tests_static {
-        if !test.test_on_vm(fun_addr, ret_addr, vm)? {
+    for (i, test) in tests_static.enumerate() {
+        print!("test static {} f64({}) ", i, test.param);
+        let result = test.test_on_vm(fun_addr, ret_addr, vm)?;
+        println!("{}", if result { "Ok" } else { "Err" });
+        if !result {
             return Ok(false);
         }
     }
