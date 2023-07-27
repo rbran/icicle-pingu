@@ -6,6 +6,8 @@ use crate::helper;
 pub enum Param<'a, 'b> {
     /// this usize is the param
     Usize(u64),
+    /// the long long type
+    I64(i64),
     /// a 32 bits float
     F32(f32),
     /// a 64 bits float (duble)
@@ -19,6 +21,8 @@ pub enum Param<'a, 'b> {
 pub enum Return {
     /// Is a simple usize value
     Usize(u64),
+    /// the long long type
+    I64(i64),
     /// a 32 bits float
     F32(f32),
     /// a 64 bits float (duble)

@@ -21,8 +21,18 @@ impl TestStatic {
     }
 }
 
-pub const TESTS_STATIC: &[f64] =
-    &[1.0, 0.0, 1.2, 8.4, 90.6, 1031.5, 2.5555555556, 90.00001, 1.0e-6, 1.0e+6];
+pub const TESTS_STATIC: &[f64] = &[
+    1.0,
+    0.0,
+    1.2,
+    8.4,
+    90.6,
+    1031.5,
+    2.5555555556,
+    90.00001,
+    1.0e-6,
+    1.0e+6,
+];
 pub fn all_tests(vm: &mut impl Vm) -> Result<bool> {
     const FN_SYM: &str = "rint";
     let fun_addr = vm.lookup_symbol(FN_SYM);

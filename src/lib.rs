@@ -20,6 +20,7 @@ mod tests {
         let mut result = true;
         result &= strlen::all_tests(&mut vm)?;
         result &= strcat::all_tests(&mut vm)?;
+        result &= atoll::all_tests(&mut vm)?;
         result &= cos::all_tests(&mut vm)?;
         result &= sin::all_tests(&mut vm)?;
         result &= rint::all_tests(&mut vm)?;

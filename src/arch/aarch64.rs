@@ -134,6 +134,9 @@ impl Aarch64 {
                 Param::F64(value) => {
                     self.helper.icicle.cpu.write_reg(self.d[i], value.to_bits())
                 }
+                Param::I64(value) => {
+                    self.helper.icicle.cpu.write_reg(self.w[i], *value as u64)
+                }
             }
         }
 
@@ -164,6 +167,9 @@ impl Aarch64 {
                     *value = f64::from_bits(
                         self.helper.icicle.cpu.read_reg(self.d[i]),
                     )
+                }
+                Return::I64(value) => {
+                    *value = self.helper.icicle.cpu.read_reg(self.w[i]) as i64
                 }
             }
         }

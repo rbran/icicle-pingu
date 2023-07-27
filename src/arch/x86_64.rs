@@ -138,6 +138,9 @@ impl X86_64 {
                     .icicle
                     .cpu
                     .write_reg(self.xmm_qa[i], value.to_bits()),
+                Param::I64(value) => {
+                    self.helper.icicle.cpu.write_reg(self.r[i], *value as u64)
+                }
             }
         }
 
@@ -176,6 +179,9 @@ impl X86_64 {
                 *value = f64::from_bits(
                     self.helper.icicle.cpu.read_reg(self.xmm_qa[0]),
                 )
+            }
+            Return::I64(value) => {
+                *value = self.helper.icicle.cpu.read_reg(self.rax) as i64
             }
         }
         Ok(())
