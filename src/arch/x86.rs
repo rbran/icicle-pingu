@@ -159,9 +159,9 @@ impl X86 {
                 self.helper.icicle.cpu.mem.read_cstr(addr, data)?;
             }
             Return::F32(value) => {
-                *value = f32::from_bits(
-                    self.helper.icicle.cpu.read_reg(self.st0) as u32,
-                )
+                *value =
+                    f64::from_bits(self.helper.icicle.cpu.read_reg(self.st0))
+                        as f32
             }
             Return::F64(value) => {
                 *value =
